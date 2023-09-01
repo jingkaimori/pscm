@@ -2,7 +2,10 @@
 // Created by PikachuHy on 2023/3/25.
 //
 #define DOCTEST_CONFIG_IMPLEMENT
-#include <doctest/doctest.h>
+#include "doctest/doctest.h"
+#ifdef PSCM_USE_CXX20_MODULES
+import pscm;
+#else
 #include <pscm/Number.h>
 #include <pscm/Pair.h>
 #include <pscm/Parser.h>
@@ -10,6 +13,7 @@
 #include <pscm/Str.h>
 #include <pscm/Symbol.h>
 #include <pscm/scm_utils.h>
+#endif
 using namespace pscm;
 using namespace doctest;
 
@@ -1272,7 +1276,7 @@ TEST_CASE("testing 6.3, Pairs and lists, append") {
     ret = scm.eval("(append '(a (b)) '((c)))");
     CHECK(ret == list(&a, list(&b), list(&c)));
     ret = scm.eval("(append '(a b) '(c . d))");
-    CHECK(ret == cons(&a, cons(&b, cons(&c, &d))));
+    CHECK(ret == Cell(cons(&a, cons(&b, cons(&c, &d)))));
     ret = scm.eval("(append '() 'a)");
     CHECK(ret == a);
   };

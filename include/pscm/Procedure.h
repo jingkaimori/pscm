@@ -19,7 +19,15 @@ public:
       , env_(env) {
   }
 
-  friend std::ostream& operator<<(std::ostream& out, const Procedure& proc);
+  UString to_string() const;
+
+  Symbol *name() const {
+    return name_;
+  }
+
+  void set_name(Symbol *name) {
+    name_ = name;
+  }
 
   [[nodiscard]] Cell args() const {
     return args_;
@@ -34,12 +42,9 @@ public:
   bool check_args(Cell args) const;
 
   SymbolTable *create_proc_env(Cell args) const;
-
-  static Procedure *create_for_each(SymbolTable *env);
-  static Procedure *create_map(SymbolTable *env);
-
   static Procedure *create_apply(SymbolTable *env);
-  static Procedure *create_force(SymbolTable *env);
+  static Procedure *create_call_with_output_string(SymbolTable *env);
+  static Procedure *create_call_with_input_string(SymbolTable *env);
 
 private:
   Symbol *name_;

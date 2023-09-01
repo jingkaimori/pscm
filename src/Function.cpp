@@ -1,12 +1,21 @@
 //
 // Created by PikachuHy on 2023/3/4.
 //
-
-#include "pscm/Function.h"
+#ifdef PSCM_USE_CXX20_MODULES
+#include "pscm/Logger.h"
 #include "pscm/common_def.h"
+import pscm;
+import std;
+import fmt;
+#else
+#include "pscm/Function.h"
+#include "pscm/ApiManager.h"
+#include "pscm/common_def.h"
+#include "pscm/scm_utils.h"
 #include <ostream>
-
+#endif
 namespace pscm {
+PSCM_INLINE_LOG_DECLARE("pscm.core.Function");
 Cell Function::call(Cell args, SourceLocation loc) {
   PSCM_ASSERT(f_.index() == 1 || f_.index() == 2);
   if (f_.index() == 1) {
@@ -22,13 +31,15 @@ Cell Function::call(Cell args, SourceLocation loc) {
   }
 }
 
-std::ostream& operator<<(std::ostream& out, const Function& func) {
-  out << "#";
-  out << "<";
-  out << "primitive-generic";
-  out << " ";
-  out << func.name_;
-  out << ">";
+UString Function::to_string() const{
+  UString out;
+  out += "#<primitive-generic "
+    + name_
+    + ">";
   return out;
+}
+
+PSCM_DEFINE_BUILTIN_PROC(Function, "noop") {
+  return Cell::bool_false();
 }
 } // namespace pscm

@@ -1,15 +1,27 @@
 //
 // Created by PikachuHy on 2023/2/23.
 //
-
+#ifdef PSCM_USE_CXX20_MODULES
+#include "pscm/Logger.h"
+#include "pscm/common_def.h"
+import pscm;
+import std;
+import fmt;
+#else
 #include "pscm/Number.h"
 #include "pscm/Exception.h"
 #include "pscm/common_def.h"
+#include "pscm/misc/ICUCompat.h"
+#include <numeric>
+#include <spdlog/fmt/fmt.h>
 #include <sstream>
 #include <string_view>
+#endif
 using namespace std::string_literals;
 
 namespace pscm {
+PSCM_INLINE_LOG_DECLARE("pscm.core.Number");
+
 std::ostream& operator<<(std::ostream& out, const Number& num) {
   if (num.data_.index() == 1) {
     return out << std::get<1>(num.data_);
@@ -24,52 +36,111 @@ std::ostream& operator<<(std::ostream& out, const Number& num) {
     return out << std::get<4>(num.data_);
   }
   else {
-    PSCM_THROW_EXCEPTION("invalid number index: " + std::to_string(num.data_.index()) + ", update needed");
+    PSCM_THROW_EXCEPTION("invalid number index: " + pscm::to_string(num.data_.index()) + ", update needed");
   }
   return out;
 }
 
-std::ostream& operator<<(std::ostream& out, const Complex& num) {
-  out << num.real_part_;
-  if (num.imag_part_ > 0) {
-    out << "+";
+UString Complex::to_string() const{
+  UString out;
+  out += pscm::to_string(real_part_);
+  if (imag_part_ > 0) {
+    out += "+";
   }
-  out << num.imag_part_;
-  out << "i";
+  out += pscm::to_string(imag_part_);
+  out += "i";
   return out;
 }
 
-std::ostream& operator<<(std::ostream& out, const Rational& num) {
-  out << num.numerator_;
-  out << "/";
-  out << num.denominator_;
+UString Rational::to_string() const{
+  UString out;
+  out += pscm::to_string(numerator_);
+  out += "/";
+  out += pscm::to_string(denominator_);
   return out;
 }
 
 Number Number::operator-(const Number& num) {
-  if (num.data_.index() != 1) {
+  if (data_.index() == 1) {
+    if (num.data_.index() == 1) {
+      auto data = std::get<1>(data_) - std::get<1>(num.data_);
+      return Number(data);
+    }
+    else if (num.data_.index() == 2) {
+      auto data = std::get<1>(data_) - std::get<2>(num.data_);
+      return Number(data);
+    }
+  }
+  else if (data_.index() == 2) {
+    if (num.data_.index() == 1) {
+      auto data = std::get<2>(data_) - std::get<1>(num.data_);
+      return Number(data);
+    }
+    else if (num.data_.index() == 2) {
+      auto data = std::get<2>(data_) - std::get<2>(num.data_);
+      return Number(data);
+    }
+  }
+  else {
     PSCM_THROW_EXCEPTION("Invalid number type: not supported now, " + to_string());
   }
-  auto data = std::get<1>(data_) - std::get<1>(num.data_);
-  return Number(data);
+  PSCM_THROW_EXCEPTION("Invalid number type: not supported now, " + to_string());
 }
 
 Number Number::operator/(const Number& num) {
   if (num.data_.index() != 1) {
     PSCM_THROW_EXCEPTION("Invalid number type: not supported now, " + to_string());
   }
-  auto data = std::get<1>(data_) / std::get<1>(num.data_);
-  return Number(data);
+  auto n1 = std::get<1>(data_);
+  auto n2 = std::get<1>(num.data_);
+  if (n2 == 0) {
+    PSCM_THROW_EXCEPTION("bad expresion: " + pscm::to_string(n1) + "/" + pscm::to_string(n2));
+  }
+  auto data = n1 / n2;
+  if (data * n2 == n1) {
+    return Number(data);
+  }
+  else {
+    // use rational
+    auto m = std::gcd(n1, n2);
+    return Number(Rational(n1 / m, n2 / m));
+  }
 }
 
 bool Number::operator<(const Number& num) const {
-  PSCM_ASSERT(data_.index() == 1);
-  if (num.data_.index() != 1) {
-    PSCM_THROW_EXCEPTION("Invalid number type: not supported now, " + to_string());
+  if (data_.index() == 1) {
+    if (num.data_.index() == 1) {
+      auto a = std::get<1>(data_);
+      auto b = std::get<1>(num.data_);
+      return a < b;
+    }
+    else if (num.data_.index() == 2) {
+      auto a = std::get<1>(data_);
+      auto b = std::get<2>(num.data_);
+      return a < b;
+    }
+    else {
+      PSCM_THROW_EXCEPTION("Invalid number type: not supported now, " + num.to_string());
+    }
   }
-  auto a = std::get<1>(data_);
-  auto b = std::get<1>(num.data_);
-  return a < b;
+  else if (data_.index() == 2) {
+    if (num.data_.index() == 1) {
+      auto a = std::get<2>(data_);
+      auto b = std::get<1>(num.data_);
+      return a < b;
+    }
+    else if (num.data_.index() == 2) {
+      auto a = std::get<2>(data_);
+      auto b = std::get<2>(num.data_);
+      return a < b;
+    }
+    else {
+      PSCM_THROW_EXCEPTION("Invalid number type: not supported now, " + num.to_string());
+    }
+  }
+  else {
+    PSCM_THROW_EXCEPTION("Invalid number type: not supported now, " + num.to_string());
+  }
 }
 
 bool Number::operator>(const Number& num) const {
@@ -146,6 +217,20 @@ void Number::inplace_mul(const Number& num) {
     else if (num.is_float()) {
       data_ = to_int() * num.to_float();
     }
+    else if (num.is_rational()) {
+      auto n0 = to_int();
+      auto n1 = n0 * num.to_rational().numerator_;
+      auto n2 = num.to_rational().denominator_;
+      auto m = std::gcd(n1, n2);
+      n1 /= m;
+      n2 /= m;
+      if (n2 == 1) {
+        data_ = n1;
+      }
+      else {
+        data_ = Rational(n1, n2);
+      }
+    }
     else {
       PSCM_THROW_EXCEPTION("Invalid number type: not supported now, " + to_string());
     }
@@ -156,6 +241,31 @@ void Number::inplace_mul(const Number& num) {
     }
     else if (num.is_float()) {
       data_ = to_float() * num.to_float();
+    }
+    else {
+      PSCM_THROW_EXCEPTION("Invalid number type: not supported now, " + to_string());
+    }
+  }
+  else if (is_rational()) {
+    if (num.is_int()) {
+      auto n0 = num.to_int();
+      auto n1 = n0 * to_rational().numerator_;
+      auto n2 = to_rational().denominator_;
+      auto m = std::gcd(n1, n2);
+      n1 /= m;
+      n2 /= m;
+      if (n2 == 1) {
+        data_ = n1;
+      }
+      else {
+        data_ = Rational(n1, n2);
+      }
+    }
+    else if (num.is_float()) {
+      auto n0 = num.to_float();
+      auto n1 = n0 * to_rational().numerator_;
+      auto n2 = to_rational().denominator_;
+      data_ = n1 / n2;
     }
     else {
       PSCM_THROW_EXCEPTION("Invalid number type: not supported now, " + to_string());
@@ -209,10 +319,24 @@ void Number::display() const {
   }
 }
 
-std::string Number::to_string() const {
-  std::stringstream ss;
-  ss << *this;
-  return ss.str();
+UString Number::to_string() const{
+  PSCM_ASSERT(!std::holds_alternative<std::monostate>(data_));
+  if (std::holds_alternative<int64_t>(data_)) {
+    return pscm::to_string(std::get<int64_t>(data_));
+  }
+  else if (std::holds_alternative<double>(data_)) {
+    return pscm::to_string(std::get<double>(data_));
+  }
+  else if (std::holds_alternative<Rational>(data_)) {
+    return std::get<Rational>(data_).to_string();
+  }
+  else if (std::holds_alternative<Complex>(data_)) {
+    return std::get<Complex>(data_).to_string();
+  }
+  else {
+    PSCM_THROW_EXCEPTION("Invalid number type: not supported now, " + to_string());
+  }
+
 }
 
 bool Number::is_zero() const {

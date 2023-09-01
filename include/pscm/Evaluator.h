@@ -25,33 +25,14 @@ Cell proc_min(Cell args);
 Cell quotient(Cell args);
 Cell remainder(Cell args);
 Cell modulo(Cell args);
+Cell proc_gcd(Cell args);
+Cell proc_lcm(Cell args);
 Cell builtin_not(Cell args);
 Cell write(Cell args);
 Cell display(Cell args);
 Cell newline(Cell args);
 Cell is_procedure(Cell args);
 Cell is_boolean(Cell args);
-Cell create_list(Cell args);
-Cell is_list(Cell args);
-Cell is_pair(Cell args);
-Cell set_car(Cell args);
-Cell set_cdr(Cell args);
-Cell proc_cons(Cell args);
-Cell proc_car(Cell args);
-Cell proc_cdr(Cell args);
-Cell proc_cdar(Cell args);
-Cell proc_cadr(Cell args);
-Cell proc_cddr(Cell args);
-Cell is_eqv(Cell args);
-Cell is_eq(Cell args);
-Cell is_equal(Cell args);
-Cell memq(Cell args);
-Cell memv(Cell args);
-Cell member(Cell args);
-Cell is_equal(Cell args);
-Cell assq(Cell args);
-Cell assv(Cell args);
-Cell assoc(Cell args);
 Cell is_vector(Cell args);
 Cell make_vector(Cell args);
 Cell proc_vector(Cell args);
@@ -62,11 +43,6 @@ Cell vector_to_list(Cell args);
 Cell list_to_vector(Cell args);
 Cell vector_fill(Cell args);
 Cell is_zero(Cell args);
-Cell is_null(Cell args);
-Cell length(Cell args);
-Cell append(Cell args);
-Cell reverse(Cell args);
-Cell list_ref(Cell args);
 Cell proc_acos(Cell args);
 Cell expt(Cell args);
 Cell proc_abs(Cell args);
@@ -147,12 +123,13 @@ Cell load(Cell args);
 Cell transcript_on(Cell args);
 Cell transcript_off(Cell args);
 Cell proc_exit(Cell args);
+
 class SymbolTable;
 class Scheme;
 
 class Evaluator {
 public:
-  Evaluator(Scheme& scm);
+  Evaluator(Scheme& scm, Evaluator *parent = nullptr);
   Cell eval(Cell expr, SymbolTable *env);
 
   struct Register {
@@ -163,7 +140,7 @@ public:
     Label cont;       // place to go to next
     Cell val;         // result of evaluation
     Cell unev;        // temporary register for expressions
-    std::string to_string() const;
+    UString to_string() const;
   };
 
   enum RegisterType { reg_expr, reg_env, reg_proc, reg_argl, reg_cont, reg_val, reg_unev };
@@ -177,22 +154,23 @@ public:
     std::vector<Cell> val;
     std::vector<Cell> unev;
     bool empty() const;
-    std::string to_string() const;
+    UString to_string() const;
   };
 
 private:
   void run();
+  bool load(const UString& filename, SymbolTable *env);
   Label eval_map_expr(Label default_pos);
 
 private:
-  friend std::ostream& operator<<(std::ostream& out, const Register& reg);
-  friend std::ostream& operator<<(std::ostream& out, const RegisterType& reg);
-  friend std::ostream& operator<<(std::ostream& out, const Stack& stack);
   Register reg_;
   Stack stack_;
   Label pos_;
   std::vector<RegisterType> reg_type_stack_;
   std::size_t step_ = 0;
   Scheme& scm_;
+  Evaluator *parent_;
 };
+
+UString to_string(pscm::Evaluator::RegisterType type);
 } // namespace pscm

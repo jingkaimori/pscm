@@ -1,16 +1,26 @@
 //
 // Created by PikachuHy on 2023/2/23.
 //
-
+#ifdef PSCM_USE_CXX20_MODULES
+#include "pscm/Logger.h"
+#include "pscm/common_def.h"
+import pscm;
+import std;
+import fmt;
+#else
 #include "pscm/Parser.h"
 #include "pscm/Char.h"
 #include "pscm/Exception.h"
+#include "pscm/Keyword.h"
 #include "pscm/Number.h"
 #include "pscm/Pair.h"
+#include "pscm/Port.h"
 #include "pscm/Str.h"
 #include "pscm/Symbol.h"
 #include "pscm/common_def.h"
 #include "pscm/scm_utils.h"
+#include "unicode/uchar.h"
+#include "unicode/ustream.h"
 #include <cctype>
 #include <cmath>
 #include <cstdint>
@@ -18,46 +28,44 @@
 #include <limits>
 #include <optional>
 #include <string>
+#include <unordered_map>
+#endif
 using namespace std::string_literals;
 
 namespace pscm {
 
+PSCM_INLINE_LOG_DECLARE("pscm.core.Parser");
+
 class NumberParser {
 public:
-  NumberParser(std::string_view data)
-      : data_(data) {
+  NumberParser(const UString& data, SourceLocation loc = {})
+      : data_(data)
+      , loc_(loc)
+      , iter_(data) {
   }
 
   Number parse() {
-    int64_t val{};
-    int64_t val2{};
-    bool has_point = false;
-    while (pos_ < data_.size()) {
-      if (data_[pos_] == ' ') {
-        pos_++;
-        continue;
-      }
-      break;
+    while (iter_.hasNext() && (iter_.current32() == ' ')) {
+      iter_.next32PostInc();
     }
-    if (pos_ < data_.size() && data_[pos_] == 'i') {
-      PSCM_THROW_EXCEPTION("Invalid Number: "s + std::string(data_));
+    if (iter_.hasNext() && iter_.current32() == 'i') {
+      PSCM_THROW_EXCEPTION(loc_.to_string() + ", Invalid Number: " + data_);
     }
-    if (pos_ < data_.size() && data_[data_.size() - 1] == 'i') {
+    if (iter_.hasNext() && data_.char32At(data_.length() - 1) == 'i') {
       return parse_complex();
     }
-    if (data_.find('/') != std::string_view::npos) {
+    if (data_.indexOf('/') != -1) {
       auto num1_opt = parse_digit();
-      if (data_[pos_] != '/') {
-        PSCM_THROW_EXCEPTION("Invalid Number: "s + std::string(data_));
+      if (iter_.next32PostInc() != '/') {
+        PSCM_THROW_EXCEPTION(loc_.to_string() + ", Invalid Number: " + data_);
       }
-      pos_++;
       auto num2_opt = parse_digit();
       return Rational(num1_opt.value(), num2_opt.value());
     }
     auto sign = parse_sign(true).value_or(false);
     auto num_opt = parse_num();
     if (!num_opt.has_value()) {
-      PSCM_THROW_EXCEPTION("Invalid Number: "s + std::string(data_));
+      PSCM_THROW_EXCEPTION(loc_.to_string() + ", Invalid Number: " + data_);
     }
 
     auto num = num_opt.value();
@@ -68,10 +76,10 @@ public:
       if (num.is_float()) {
         return -num.to_float();
       }
-      PSCM_THROW_EXCEPTION("Invalid Number: "s + std::string(data_));
+      PSCM_THROW_EXCEPTION(loc_.to_string() + ", Invalid Number: " + data_);
     }
-    if (pos_ != data_.size()) {
-      PSCM_THROW_EXCEPTION("Invalid Number: "s + std::string(data_));
+    if (iter_.getIndex() != iter_.endIndex()) {
+      PSCM_THROW_EXCEPTION(loc_.to_string() + ", Invalid Number: " + data_);
     }
     return num;
   }
@@ -79,52 +87,52 @@ public:
   std::optional<std::int64_t> parse_digit(bool optional = false) {
     int count = 0;
     std::int64_t ret = 0;
-    while (pos_ < data_.size() && is_digit()) {
-      ret = ret * 10 + (data_[pos_] - '0');
-      pos_++;
+    while (iter_.hasNext() && is_digit()) {
+      
+      ret = ret * 10 + u_digit(iter_.next32PostInc(), 10);
       count++;
     }
     if (count == 0) {
       if (optional) {
         return std::nullopt;
       }
-      PSCM_THROW_EXCEPTION("Invalid Number: "s + std::string(data_));
+      PSCM_THROW_EXCEPTION(loc_.to_string() + ", Invalid Number: " + data_);
     }
     return ret;
   }
 
   std::optional<Number> parse_num(bool optional = false) {
-    auto pos = pos_;
+    auto pos = iter_.getIndex();
     auto num = parse_digit(optional);
     if (!num.has_value()) {
       if (optional) {
         return std::nullopt;
       }
-      PSCM_THROW_EXCEPTION("Invalid Number: "s + std::string(data_));
+      PSCM_THROW_EXCEPTION(loc_.to_string() + ", Invalid Number: " + data_);
     }
     bool has_point = false;
-    std::int64_t point_num = 0;
-    if (pos_ < data_.size() && data_[pos_] == '.') {
+    if (iter_.hasNext() && iter_.current32() == '.') {
       has_point = true;
       has_point = true;
-      pos_++;
-      point_num = parse_digit().value();
+      iter_.next32PostInc();
+      parse_digit().value();
     }
-    double val = num.value() * 1.0;
     bool has_e = false;
     std::int64_t e_num = 0;
-    if (data_[pos_] == 'e' || data_[pos_] == 'E') {
+    if (iter_.hasNext() && (iter_.current32() == 'e' || iter_.current32() == 'E')) {
       has_e = true;
-      pos_++;
+      iter_.next32PostInc();
       auto sign = parse_sign(true);
       e_num = parse_digit().value();
       if (sign.value_or(false)) {
         e_num = -e_num;
       }
     }
-    auto new_pos = pos_;
+    auto new_pos = iter_.getIndex();
     if (has_point || has_e) {
-      return convert_str_to_float(std::string(data_.substr(pos, new_pos - pos)));
+      UString numstr;
+      data_.extractBetween(pos, new_pos, numstr);
+      return convert_str_to_float(numstr);
     }
     else {
       return num;
@@ -134,7 +142,7 @@ public:
   Number parse_complex() {
     Number ret;
     auto sign1_opt = parse_sign(true);
-    if (has_sign_after(pos_)) {
+    if (has_sign_after(iter_)) {
       auto num1_opt = parse_num();
       auto sign2_opt = parse_sign(false);
       double num1 = num1_opt.value().is_int() ? num1_opt.value().to_int() : num1_opt.value().to_float();
@@ -152,7 +160,7 @@ public:
     }
     else {
       if (!sign1_opt.has_value()) {
-        PSCM_THROW_EXCEPTION("Invalid Number: "s + std::string(data_));
+        PSCM_THROW_EXCEPTION(loc_.to_string() + ", Invalid Number: " + data_);
       }
       auto num_opt = parse_num(true);
       auto num_tmp = num_opt.value_or(1.0);
@@ -163,112 +171,113 @@ public:
       }
       ret = Complex(0, num);
     }
-    if (data_[pos_] != 'i') {
-      PSCM_THROW_EXCEPTION("Invalid Number: "s + std::string(data_));
+    if (iter_.current32() != 'i') {
+      PSCM_THROW_EXCEPTION(loc_.to_string() + ", Invalid Number: " + data_);
     }
     return ret;
   }
 
   std::optional<bool> parse_sign(bool optional) {
-    if (data_[pos_] == '-') {
-      pos_++;
+    if (!iter_.hasNext()) {
+      return std::nullopt;
+    }
+    auto ch = iter_.current32();
+    if (ch == '-') {
+      iter_.next32PostInc();
       return true;
     }
-    else if (data_[pos_] == '+') {
-      pos_++;
+    else if (ch == '+') {
+      iter_.next32PostInc();
       return false;
     }
     else if (optional) {
       return std::nullopt;
     }
     else {
-      PSCM_THROW_EXCEPTION("Invalid Number: "s + std::string(data_));
+      PSCM_THROW_EXCEPTION(loc_.to_string() + ", Invalid Number: " + data_);
     }
   }
 
-  bool has_sign_after(std::size_t pos) {
-    while (pos < data_.size()) {
-      if (is_sign(pos)) {
+  bool has_sign_after(UIterator& iter) {
+    while (iter.hasNext()) {
+      if (is_sign(iter)) {
         return true;
       }
-      pos++;
+      iter.next32PostInc();
     }
     return false;
   }
 
-  bool is_sign(std::size_t pos) {
-    return data_[pos] == '+' || data_[pos] == '-';
+  bool is_sign(const UIterator& iter) {
+    return iter.current32() == '+' || iter.current32() == '-';
   }
 
   bool is_digit() {
-    PSCM_ASSERT(pos_ < data_.size());
-    return std::isdigit(data_[pos_]);
+    PSCM_ASSERT(iter_.hasNext());
+    return u_isdigit(iter_.current32());
   }
 
-  double convert_str_to_float(std::string str) {
-    SPDLOG_INFO("str: {}", str);
+  double convert_str_to_float(const UString& str) {
+    PSCM_INFO("str: {0}", str);
     errno = 0;
-    char *end;
-    double x = std::stod(str);
-    if (errno == ERANGE) {
-      if (!(x != 0 && x > -HUGE_VAL && x < HUGE_VAL)) {
-        PSCM_THROW_EXCEPTION("Invalid Number: "s + std::string(data_));
-      }
-      else {
-        return x;
-      }
+    double x;
+    auto res = double_from_string(str);
+    if (std::holds_alternative<double>(res)) {
+      return std::get<double>(res);
     }
-    else if (errno) {
-      PSCM_THROW_EXCEPTION("Invalid Number: "s + std::string(data_));
-    }
-    else {
-      return x;
+    else{
+      PSCM_THROW_EXCEPTION(loc_.to_string() + ", Invalid Number: " + data_);
+      return 0.0;
     }
   }
 
 private:
-  std::string_view data_;
-  std::size_t pos_{};
-  bool has_parsed_ = false;
-  bool negative_ = false;
-  bool is_float = false;
-  bool is_complex = false;
+  UString data_;
+  UIterator iter_;
+  SourceLocation loc_;
 };
 
-Parser::Parser(std::string code)
-    : code_(std::move(code)) {
+Parser::Parser(const UString & code)
+    : code_(code) {
 }
 
-Parser::Parser(std::string code, std::string_view filename)
-    : code_(std::move(code))
+Parser::Parser(UIteratorP in)
+    : code_(in) {
+}
+
+Parser::Parser(const UString & code, const UString& filename)
+    : code_(code)
     , filename_(filename) {
   int start = 0;
-  int offset = 0;
   is_file_ = true;
-  while (start + offset < code_.size()) {
-    if (code_[start + offset] == '\n') {
-      lines_.emplace_back(code_.data() + start, offset);
-      start += offset + 1;
-      offset = 0;
-    }
-    else {
-      offset++;
+  auto iter_ = std::get<UIterator>(code_);
+  UChar32 ch;
+  while (iter_.hasNext()) {
+    ch = iter_.next32();
+    if (ch == '\n') { // TODO: Line break Category
+      auto end = iter_.getIndex();
+      lines_.emplace_back(code, start, end - start);
+      start = end;
     }
   }
+  iter_.setToStart();
 }
 
-Parser::Parser(std::istream *in)
-    : in_(in)
-    , use_stream_(true) {
+Parser::Parser(Port *in)
+    : code_(in) {
 }
 
 Cell Parser::parse() {
   Cell ret{};
   has_parsed_ = false;
-  while (!has_parsed_ && !is_eof()) {
-    auto start = pos_;
+  while (!has_parsed_) {
+    last_token_.remove();
     auto token = next_token();
-    ret = parse_token(token, start);
+    if (token == Token::NONE) {
+      return Cell::none();
+    }
+    
+    ret = parse_token(token);
   }
   return ret;
 }
@@ -277,7 +286,7 @@ Cell Parser::next() {
   return parse();
 }
 
-Cell Parser::parse_token(pscm::Parser::Token token, std::size_t start) {
+Cell Parser::parse_token(pscm::Parser::Token token) {
   Cell ret;
   has_parsed_ = false;
   while (!has_parsed_) {
@@ -293,7 +302,14 @@ Cell Parser::parse_token(pscm::Parser::Token token, std::size_t start) {
       break;
     }
     case Token::SYMBOL: {
-      ret = Cell(last_symbol_);
+      PSCM_ASSERT(last_symbol_);
+      PSCM_ASSERT(!last_symbol_->name().isEmpty());
+      if (last_symbol_->name()[0] == ':') {
+        ret = Cell(new Keyword(last_symbol_));
+      }
+      else {
+        ret = Cell(last_symbol_);
+      }
       has_parsed_ = true;
       break;
     }
@@ -326,7 +342,7 @@ Cell Parser::parse_token(pscm::Parser::Token token, std::size_t start) {
     case Token::SEMICOLON: {
       skip_line();
       has_parsed_ = false;
-      start = pos_;
+      last_token_.remove();
       token = next_token();
       break;
     }
@@ -358,7 +374,8 @@ Cell Parser::parse_token(pscm::Parser::Token token, std::size_t start) {
         }
         std::cout << "^" << std::endl;
       }
-      PSCM_THROW_EXCEPTION("Unsupported token: " + code_.substr(start, pos_ - start));
+      PSCM_ERROR("Unsupported token: {0}", int(token));
+      PSCM_THROW_EXCEPTION("Unsupported token: " + last_token_);
     }
     }
   }
@@ -366,11 +383,11 @@ Cell Parser::parse_token(pscm::Parser::Token token, std::size_t start) {
 }
 
 Cell Parser::parse_expr() {
-  Pair *ret = cons(nil, nil);
+  Pair *ret = cons(Cell::nil(), Cell::nil());
   auto p = ret;
-  while (!is_eof()) {
+  while (true) {
     skip_empty();
-    auto start = pos_;
+    last_token_.remove();
     auto token = next_token();
     switch (token) {
     case Token::SEMICOLON: {
@@ -387,21 +404,22 @@ Cell Parser::parse_expr() {
         p->second = expr;
         return ret->second;
       }
-      PSCM_THROW_EXCEPTION("Invalid expr with . : " + code_.substr(start, pos_ - start));
+      PSCM_THROW_EXCEPTION("Invalid expr with . : " + last_token_);
+    }
+    case Token::END_OF_FILE: {
+      PSCM_THROW_EXCEPTION("Invalid expr: " + last_token_);
     }
     default: {
-      auto expr = parse_token(token, start);
+      auto expr = parse_token(token);
       auto new_pair = cons(expr, nil);
       p->second = new_pair;
       p = new_pair;
     }
     }
   }
-  PSCM_THROW_EXCEPTION("Invalid expr: " + code_);
 }
 
 Cell Parser::parse_literal() {
-  std::string key;
   auto token = next_token();
   switch (token) {
   case Token::SYMBOL: {
@@ -413,20 +431,25 @@ Cell Parser::parse_literal() {
     }
     else {
       auto name = last_symbol_->name();
-      if (name.empty()) {
-        PSCM_THROW_EXCEPTION("Unsupported literal: " + std::string(last_symbol_->name()));
+      if (name.isEmpty()) {
+        PSCM_THROW_EXCEPTION("Unsupported literal: " + last_symbol_->name());
       }
       if (name[0] == 'e') {
         // parse number literal
-        auto val = std::stod(std::string(name.substr(1)));
+        std::string utf8;
+        utf8.reserve(name.length());
+        name.extract(1, name.length() - 1, utf8.data(), name.length());
+        auto val = std::stod(utf8);
         return new Number(val);
       }
       if (name[0] == 'i') {
-        NumberParser parser(name.substr(1));
+        UString numstr;
+        name.extractBetween(1, name.length(), numstr);
+        NumberParser parser(numstr);
         auto val = parser.parse();
         return new Number(val);
       }
-      PSCM_THROW_EXCEPTION("Unsupported literal: " + std::string(last_symbol_->name()));
+      PSCM_THROW_EXCEPTION("Unsupported literal: " + last_symbol_->name());
     }
     break;
   }
@@ -437,15 +460,54 @@ Cell Parser::parse_literal() {
       return Char::from(' ');
     }
     // read char
-    auto start = pos_;
+    last_token_.remove();
     auto tok = next_token();
     if (tok == Token::DOT) {
       return Char::from('.');
     }
     else if (tok == Token::SYMBOL) {
       auto key = last_symbol_->name();
-      if (key.size() == 1) {
-        return Char::from(key[0]);
+      static std::unordered_map<UString, int> literal_map{
+        {"nul",  0},
+        {"soh",  1},
+        {"stx",  2},
+        {"etx",  3},
+        {"eot",  4},
+        {"enq",  5},
+        {"ack",  6},
+        {"bel",  7},
+        { "bs",  8},
+        { "ht",  9},
+        { "lf", 10},
+        { "vt", 11},
+        { "ff", 12},
+        { "cr", 13},
+        { "so", 14},
+        { "si", 15},
+        {"dle", 16},
+        {"dl1", 17},
+        {"dc2", 18},
+        {"dc3", 19},
+        {"dc4", 20},
+        {"nak", 21},
+        {"syn", 22},
+        {"etb", 23},
+        {"can", 24},
+        { "em", 25},
+        {"sub", 26},
+        {"esc", 27},
+        { "fs", 28},
+        { "gs", 29},
+        { "rs", 30},
+        { "us", 31},
+        { "sp", 32},
+      };
+      auto it = literal_map.find(key);
+      if (it != literal_map.end()) {
+        return Char::from(it->second);
+      }
+      if (key.countChar32() == 1) {
+        return Char::from(key.char32At(0));
       }
       else if (key == "space" || key == "Space") {
         return Char::from(' ');
@@ -453,8 +515,23 @@ Cell Parser::parse_literal() {
       else if (key == "newline") {
         return Char::from('\n');
       }
+      else if (key == "return" || key == "cr") {
+        return Char::from(13);
+      }
+      else if (key == "ht") {
+        return Char::from(9);
+      }
+      else if (key == "lf") {
+        return Char::from(10);
+      }
+      else if (key == "vt") {
+        return Char::from(11);
+      }
+      else if (key == "ff") {
+        return Char::from(12);
+      }
       else {
-        PSCM_THROW_EXCEPTION("Unsupported literal: " + std::string(key));
+        PSCM_THROW_EXCEPTION("Unsupported literal: " + key);
       }
     }
     else if (tok == Token::SEMICOLON) {
@@ -467,13 +544,13 @@ Cell Parser::parse_literal() {
       if (n >= 0 && n < 10) {
         return Char::from('0' + n);
       }
-      PSCM_THROW_EXCEPTION("Unsupported literal: " + std::to_string(n));
+      PSCM_THROW_EXCEPTION("Unsupported literal: " + pscm::to_string(n));
     }
     else {
-      if (key.empty()) {
+      if (last_token_.isEmpty()) {
         return Char::from(' ');
       }
-      PSCM_THROW_EXCEPTION("Invalid char: " + code_.substr(start, pos_ - start));
+      PSCM_THROW_EXCEPTION("Invalid char: " + last_token_);
     }
   }
   case Token::LEFT_PARENTHESES: {
@@ -485,117 +562,106 @@ Cell Parser::parse_literal() {
       expr = cdr(expr);
       vec.push_back(e);
     }
-    return { new Cell::Vec(std::move(vec)) };
+    return { new Cell::Vec(move(vec)) };
   }
   default: {
   }
   }
-  PSCM_THROW_EXCEPTION("Unsupported literal: " + key);
+  PSCM_THROW_EXCEPTION("Unsupported literal: " + last_token_);
 }
 
 Cell Parser::parse_string() {
-  auto start = pos_;
-  std::string s;
-  while (!is_eof()) {
-    if (peek_char() == '"') {
+  auto row = row_;
+  // auto col = col_;
+  // auto start = pos_;
+  UString s;
+  while (true) {
+    auto ch = peek_char();
+    if (ch == '"') {
       next_char();
       break;
+    } else if (ch == EOF)
+    {
+      break;
     }
-    if (peek_char() == '\\') {
+    
+    if (ch == '\\') {
       next_char();
-      if (is_eof()) {
+      ch = next_char();
+      if (ch == EOF) {
         PSCM_THROW_EXCEPTION("Invalid String: ");
       }
-      auto ch = peek_char();
       switch (ch) {
       case 't': {
-        s.push_back('\t');
+        s += '\t';
         break;
       }
       case 'n': {
-        s.push_back('\n');
+        s += '\n';
         break;
       }
       case '"': {
-        s.push_back('"');
+        s += '"';
         break;
       }
       case '\\': {
-        s.push_back('\\');
+        s += '\\';
         break;
       }
       default: {
-        PSCM_THROW_EXCEPTION("Unsupported char \\"s + ch + ", current string: " + s);
+        PSCM_THROW_EXCEPTION("Unsupported char \\"_u + ch + ", current string: " + s);
       }
       }
-      next_char();
     }
     else {
-      s.push_back(next_char());
+      s += next_char();
     }
   }
-  Cell ret(new String(s));
-  return ret;
-  // while (pos_ < code_.size()) {
-  //   if (code_[pos_] == '"') {
-  //     break;
-  //   }
-  //   if (code_[pos_] == '\\') {
-  //     if (pos_ + 1 < code_.size()) {
-  //       advance();
-  //     }
-  //     else {
-  //       PSCM_THROW_EXCEPTION("Invalid String: " + code_.substr(start));
-  //     }
-  //   }
-  //   s.push_back(code_[pos_]);
-  //   advance();
-  // }
-  // if (pos_ < code_.size() && code_[pos_] == '"') {
-  //   Cell ret(new String(s));
-  //   advance();
-  //   return ret;
-  // }
-  // PSCM_THROW_EXCEPTION("Invalid string: " + code_.substr(start));
+  if (is_file_) {
+    std::string utf8;
+    filename_.toUTF8String(utf8);
+    Cell ret(new String(s), SourceLocation(utf8.c_str(), row));
+    return ret;
+  }
+  else {
+
+    Cell ret(new String(s));
+    return ret;
+  }
 }
 
 void Parser::skip_empty() {
-  while (!is_eof()) {
-    char ch = peek_char();
-    if (!std::isspace(ch)) {
+  auto ch = peek_char();
+  while (ch != EOF) {
+    if (!u_isspace(ch)) {
       break;
     }
-    ch = next_char();
+    next_char();
+    ch = peek_char();
   }
 }
 
 void Parser::skip_line() {
-  while (!is_eof()) {
-    char ch = peek_char();
-    next_char();
+  auto ch = peek_char();
+  while (ch != EOF) {
     if (ch == '\n') {
       break;
     }
+    next_char();
+    ch = peek_char();
   }
-}
-
-void Parser::eat(char ch) {
-  if (code_[pos_] != ch) {
-    throw Exception("Invalid code: " + code_.substr(pos_) + "\n" + "Expect: " + ch + "\n" + "Current: " + code_[pos_]);
-  }
-  advance();
 }
 
 Parser::Token Parser::next_token() {
   skip_empty();
-  if (is_eof()) {
+  UChar32 ch = next_char();
+  switch (ch) {
+  case EOF: {
     if (is_file_ || use_stream_) {
       return Token::END_OF_FILE;
     }
     return Token::NONE;
   }
-  char ch = next_char();
-  switch (ch) {
   case '(': {
     return Token::LEFT_PARENTHESES;
   }
@@ -635,14 +701,23 @@ Parser::Token Parser::next_token() {
     }
   }
   default: {
-    auto row = row_;
+    auto row = row_ + 1;
     auto col = col_;
-    std::string s;
-    s.push_back(ch);
-    read_until(s, "()\"'`,;");
-    if (std::isdigit(ch) || (s.size() > 1 && (ch == '-' || ch == '+'))) {
+    UString s;
+    s += ch;
+    static UErrorCode err;
+    static USet set("[()\"'`,;]"_u, err);
+    set.freeze();
+    read_until(s, set);
+    if (s == "1+" || s == "1-") {
+      last_symbol_ = new Symbol(s, filename_, row, col);
+      return Token::SYMBOL;
+    }
+    if (u_isdigit(ch) || (s.length() > 1 && (ch == '-' || ch == '+') && u_isdigit(s[1]))) {
       try {
-        auto num = NumberParser(s).parse();
+      std::string utf8;
+      filename_.toUTF8String(utf8);
+        auto num = NumberParser(s, SourceLocation(utf8.c_str(), row)).parse();
         last_num_ = new Number(num);
         return Token::NUMBER;
       }
@@ -655,73 +730,66 @@ Parser::Token Parser::next_token() {
   }
 }
 
-void Parser::advance() {
-  PSCM_ASSERT(pos_ <= code_.size());
-  if (code_[pos_] == '\n') {
+void Parser::advance(UChar32 curchar) {
+  if (curchar == '\n') {
     row_++;
     col_ = 0;
   }
-  pos_++;
+  last_token_ += curchar;
   col_++;
 }
 
-bool Parser::is_eof() const {
-  if (use_stream_) {
-    PSCM_ASSERT(in_);
-    return in_->eof();
-  }
-  else {
-    return pos_ >= code_.size();
-  }
+// 观览器 #4 的辅助类型
+template<class ... Ts>
+struct overloaded : Ts... { using Ts::operator()...; };
+
+/**
+ * 读取当前字符并前移迭代器，类似于 nextposinc 系列。返回EOF表示读到末尾。
+*/
+UChar32 Parser::next_char() {
+  UChar32 ch = std::visit(overloaded{
+      [](UIteratorP iter) -> UChar32 {
+        UChar32 ch = iter->next32PostInc();
+        return ch == UIteratorDone ? EOF : ch; },
+      [](UIterator& iter) -> UChar32 {
+        UChar32 ch = iter.next32PostInc();
+        return ch == UIteratorDone ? EOF : ch; },
+      [](pscm::Port* arg) -> UChar32 { return arg->read_char(); },
+    }, code_);
+  advance(ch);
+  return ch;
 }
 
-char Parser::next_char() {
-  if (use_stream_) {
-    char ch;
-    in_->get(ch);
-    return ch;
-  }
-  else {
-    char ch = code_[pos_];
-    advance();
-    return ch;
-  }
+UChar32 Parser::peek_char() {
+  return std::visit(overloaded{
+      [](UIteratorP iter) -> UChar32 {
+        UChar32 ch = iter->current32();
+        return ch == UIteratorDone ? EOF : ch; },
+      [](UIterator& iter) -> UChar32 {
+        UChar32 ch = iter.current32();
+        return ch == UIteratorDone ? EOF : ch; },
+      [](pscm::Port* arg) -> UChar32 { return arg->peek_char(); },
+    }, code_);
 }
 
-char Parser::peek_char() {
-  if (use_stream_) {
-    char ch;
-    ch = in_->peek();
-    return ch;
-  }
-  else {
-    if (is_eof()) {
-      return EOF;
+void Parser::read_until(UString& s, const USet& end) {
+  UChar32 ch = peek_char();
+  while (ch != EOF) {
+    if (u_isspace(ch)) {
+      break;
     }
-    else {
-      char ch = code_[pos_];
-      return ch;
+    if (end.contains(ch)) {
+      break;
     }
-  }
-}
-
-void Parser::read_until(std::string& s, std::string_view end) {
-  char ch;
-  while (!is_eof()) {
+    s += ch;
+    next_char();
     ch = peek_char();
-    if (std::isspace(ch)) {
-      break;
-    }
-    if (end.find(ch) != std::string_view::npos) {
-      break;
-    }
-    s.push_back(ch);
-    ch = next_char();
   }
 }
 
 Number operator""_num(const char *data, std::size_t len) {
-  NumberParser parser(std::string_view(data, len));
+  UString str(data, len);
+  NumberParser parser(str);
   return parser.parse();
 }
 } // namespace pscm

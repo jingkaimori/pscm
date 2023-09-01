@@ -1,11 +1,15 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
-#include <doctest/doctest.h>
+#include "doctest/doctest.h"
+#ifdef PSCM_USE_CXX20_MODULES
+import pscm;
+#else
 #include <pscm/Number.h>
 #include <pscm/Pair.h>
 #include <pscm/Scheme.h>
 #include <pscm/Symbol.h>
 #include <pscm/scm_utils.h>
 #include <string>
+#endif
 using namespace doctest;
 using namespace pscm;
 using namespace std::string_literals;
@@ -63,9 +67,10 @@ TEST_CASE("testing map let set!") {
     CHECK(ret == list(1, 2, 3));
   };
   {
-    // Scheme scm;
-    // f(scm);
-  } {
+    Scheme scm;
+    f(scm);
+  }
+  {
     Scheme scm(true);
     f(scm);
   }

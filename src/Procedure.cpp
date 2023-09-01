@@ -1,8 +1,15 @@
 //
 // Created by PikachuHy on 2023/3/4.
 //
-
+#ifdef PSCM_USE_CXX20_MODULES
+#include "pscm/Logger.h"
+#include "pscm/common_def.h"
+import pscm;
+import std;
+import fmt;
+#else
 #include "pscm/Procedure.h"
+#include "pscm/ApiManager.h"
 #include "pscm/Exception.h"
 #include "pscm/Expander.h"
 #include "pscm/Pair.h"
@@ -11,20 +18,22 @@
 #include "pscm/SymbolTable.h"
 #include "pscm/common_def.h"
 #include "pscm/scm_utils.h"
-
+#endif
 namespace pscm {
-std::ostream& operator<<(std::ostream& out, const Procedure& proc) {
-  out << "#";
-  out << "<procedure ";
-  if (proc.name_) {
-    out << proc.name_->name();
+PSCM_INLINE_LOG_DECLARE("pscm.core.Procedure");
+UString Procedure::to_string() const{
+  UString out;
+  out += "#";
+  out += "<procedure ";
+  if (name_) {
+    out += name_->name();
   }
   else {
-    out << "#f";
+    out += "#f";
   }
-  out << " ";
-  out << proc.args_;
-  out << ">";
+  out += " ";
+  out += args_.to_string();
+  out += ">";
   return out;
 }
 
@@ -55,41 +64,21 @@ bool Procedure::check_args(Cell args) const {
 }
 
 SymbolTable *Procedure::create_proc_env(Cell args) const {
-  auto proc_env = new SymbolTable(env_);
+  auto proc_env = new SymbolTable("apply proc", env_);
   auto p1 = args_;
   auto p2 = args;
   while (p1.is_pair() && !p1.is_nil() && !car(p1).is_nil()) {
     PSCM_ASSERT(car(p1).is_sym());
-    auto sym = car(p1).to_symbol();
+    auto sym = car(p1).to_sym();
     auto ret = car(p2);
     proc_env->insert(sym, ret);
     p1 = cdr(p1);
     p2 = cdr(p2);
   }
   if (p1.is_sym()) {
-    proc_env->insert(p1.to_symbol(), p2);
+    proc_env->insert(p1.to_sym(), p2);
   }
   return proc_env;
-}
-
-Procedure *Procedure::create_for_each(SymbolTable *env) {
-  auto name = new Symbol("for-each");
-  auto proc = new Symbol("proc");
-  auto lists = new Symbol("lists");
-  Cell args = cons(proc, lists);
-  Cell body = cons(builtin_for_each, cons(proc, lists));
-  body = cons(body, nil);
-  return new Procedure(name, args, body, env);
-}
-
-Procedure *Procedure::create_map(SymbolTable *env) {
-  auto name = new Symbol("map");
-  auto proc = new Symbol("proc");
-  auto lists = new Symbol("lists");
-  Cell args = cons(proc, lists);
-  Cell body = cons(builtin_map, cons(proc, lists));
-  body = cons(body, nil);
-  return new Procedure(name, args, body, env);
 }
 
 Procedure *Procedure::create_apply(SymbolTable *env) {
@@ -101,12 +90,11 @@ Procedure *Procedure::create_apply(SymbolTable *env) {
   return new Procedure(name, cons(proc, args), body, env);
 }
 
-Procedure *Procedure::create_force(SymbolTable *env) {
-  auto name = new Symbol("force");
-  auto promise = new Symbol("promise");
-  Cell args = list(promise);
-  Cell body = list(builtin_force, promise);
-  body = cons(body, nil);
-  return new Procedure(name, args, body, env);
+PSCM_DEFINE_BUILTIN_PROC(Procedure, "procedure-name") {
+  PSCM_ASSERT(args.is_pair());
+  auto arg = car(args);
+  PSCM_ASSERT(arg.is_proc());
+  auto proc = arg.to_proc();
+  return proc->name();
 }
 } // namespace pscm

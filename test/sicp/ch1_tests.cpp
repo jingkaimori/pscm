@@ -2,10 +2,14 @@
 // Created by PikachuHy on 2023/2/23.
 //
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
-#include <doctest/doctest.h>
+#include "doctest/doctest.h"
+#ifdef PSCM_USE_CXX20_MODULES
+import pscm;
+#else
 #include <pscm/Number.h>
 #include <pscm/Scheme.h>
 #include <string>
+#endif
 using namespace doctest;
 using namespace pscm;
 using namespace std::string_literals;

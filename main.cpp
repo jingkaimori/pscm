@@ -1,10 +1,14 @@
 //
 // Created by PikachuHy on 2023/4/5.
 //
+#ifdef PSCM_USE_CXX20_MODULES
+import pscm;
+import std;
+#else
 #include <iostream>
 #include <pscm/Scheme.h>
-#include <spdlog/spdlog.h>
 #include <string>
+#endif
 using namespace std::string_literals;
 using namespace pscm;
 
@@ -24,7 +28,6 @@ please report bugs to https://github.com/PikachuHy/pscm/issues
 }
 
 int main(int argc, char **argv) {
-  spdlog::set_level(spdlog::level::err);
   Scheme scm;
   auto version = scm.eval("(version)");
   std::cout << "Welcome to PikachuHy's Scheme" << std::endl;
@@ -89,5 +92,6 @@ int main(int argc, char **argv) {
       return 0;
     }
   }
+  scm.repl();
   return 0;
 }

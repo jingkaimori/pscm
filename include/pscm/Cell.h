@@ -3,26 +3,13 @@
 //
 
 #pragma once
+#include "compat.h"
+#include "pscm/misc/SourceLocation.h"
+#include <cstdint>
 #include <ostream>
 #include <vector>
 
 namespace pscm {
-
-struct SourceLocation {
-  constexpr SourceLocation(const char *filename = __builtin_FILE(), const char *funcname = __builtin_FUNCTION(),
-                           unsigned int linenum = __builtin_LINE())
-      : filename(filename)
-      , funcname(funcname)
-      , linenum(linenum) {
-  }
-
-  const char *filename;
-  const char *funcname;
-  unsigned int linenum;
-
-  std::string to_string() const;
-};
-
 class Scheme;
 class Number;
 class Char;
@@ -36,6 +23,9 @@ class Macro;
 class Promise;
 class Continuation;
 class Port;
+class Module;
+class HashTable;
+class Keyword;
 enum class Label {
   DONE,
   EVAL,
@@ -53,11 +43,16 @@ enum class Label {
   AFTER_APPLY_FUNC,
   AFTER_APPLY_PROC,
   AFTER_APPLY_MACRO,
+  AFTER_APPLY_USER_DEFINED_MACRO,
   AFTER_APPLY_CONT,
   AFTER_EVAL_FIRST_EXPR,
   AFTER_EVAL_OTHER_EXPR,
   APPLY_APPLY, // call apply from scheme
+  APPLY_EVAL,  // call eval from scheme
   APPLY_DEFINE,
+  APPLY_DEFINE_MACRO,
+  APPLY_DEFINE_MODULE,
+  APPLY_IS_DEFINED,
   APPLY_COND,
   APPLY_IF,
   APPLY_AND,
@@ -71,6 +66,11 @@ enum class Label {
   APPLY_MAP,
   APPLY_FORCE,
   APPLY_BEGIN,
+  APPLY_LOAD,
+  APPLY_CURRENT_MODULE,
+  APPLY_USE_MODULES,
+  APPLY_RESOLVE_MODULE,
+  APPLY_EXPORT,
   AFTER_EVAL_FOR_EACH_FIRST_EXPR,
   AFTER_EVAL_MAP_FIRST_EXPR,
   AFTER_EVAL_MAP_OTHER_EXPR,
@@ -82,32 +82,45 @@ enum class Label {
   AFTER_EVAL_AND_EXPR,
   AFTER_EVAL_OR_EXPR,
   AFTER_EVAL_CALL_WITH_VALUES_PRODUCER,
+  AFTER_APPLY_EVAL,
+  TODO
 };
-std::string to_string(Label label);
+const UString to_string(Label label);
 std::ostream& operator<<(std::ostream& out, const Label& pos);
+
+class SmallObject {
+public:
+  SmallObject(long tag, void *data)
+      : tag(tag)
+      , data(data) {
+  }
+
+  UString to_string() const;
+  long tag;
+  void *data;
+};
+
+#define PSCM_CELL_TYPE(Type, type, tag)                                                                                \
+  Cell(Type *t, SourceLocation loc = {});                                                                              \
+  bool is_##type() const {                                                                                             \
+    return tag_ == Tag::tag;                                                                                           \
+  }                                                                                                                    \
+  Type *to_##type(SourceLocation loc = {}) const
+class SchemeProxy;
+using HashCodeType = std::uint32_t;
 
 class Cell {
 public:
   typedef Cell (*ScmFunc)(Cell);
   typedef Cell (*ScmMacro)(Scheme&, SymbolTable *, Cell);
+  typedef Cell (*ScmMacro2)(SchemeProxy, SymbolTable *, Cell);
+  typedef bool (*ScmCmp)(Cell, Cell);
   using Vec = std::vector<Cell>;
 
   Cell() {
     ref_count_++;
   };
 
-  Cell(Number *num);
-  Cell(Char *ch);
-  Cell(String *str);
-  Cell(Symbol *sym);
-  Cell(Pair *pair);
-  Cell(Vec *pair);
-  Cell(Function *f);
-  Cell(Macro *f);
-  Cell(const Procedure *proc);
-  Cell(Promise *p);
-  Cell(Continuation *cont);
-  Cell(Port *port);
   explicit Cell(bool val);
 
   ~Cell() {
@@ -129,10 +142,14 @@ public:
     MACRO,       //
     PROMISE,     // promise
     PORT,        // port
+    SMOB,        // guile small object
+    MODULE,      // module
+    HASH_TABLE,  // hash table
+    KEYWORD,     // keyword
     CONTINUATION // continuation
   };
-  friend std::ostream& operator<<(std::ostream& out, const Cell& cell);
-  std::string to_string() const;
+  UString to_string() const;
+  UString pretty_string() const;
   void display(Port& port);
 
   static Cell nil() {
@@ -166,41 +183,9 @@ public:
     return tag_ == Tag::NIL;
   }
 
-  bool is_pair() const {
-    return tag_ == Tag::PAIR;
+  bool is_ex() const {
+    return tag_ == Tag::EXCEPTION;
   }
-
-  Pair *to_pair(SourceLocation loc = {}) const;
-
-  bool is_vec() const {
-    return tag_ == Tag::VECTOR;
-  }
-
-  Vec *to_vec(SourceLocation loc = {}) const;
-
-  bool is_sym() const {
-    return tag_ == Tag::SYMBOL;
-  }
-
-  Symbol *to_symbol(SourceLocation loc = {}) const;
-
-  bool is_char() const {
-    return tag_ == Tag::CHAR;
-  }
-
-  Char *to_char(SourceLocation loc = {}) const;
-
-  bool is_str() const {
-    return tag_ == Tag::STRING;
-  }
-
-  String *to_str(SourceLocation loc = {}) const;
-
-  bool is_num() const {
-    return tag_ == Tag::NUMBER;
-  }
-
-  Number *to_number(SourceLocation loc = {}) const;
 
   bool is_bool() const {
     return tag_ == Tag::BOOL;
@@ -208,46 +193,36 @@ public:
 
   bool to_bool(SourceLocation loc = {}) const;
 
-  bool is_func() const {
-    return tag_ == Tag::FUNCTION;
-  }
-
-  Function *to_func(SourceLocation loc = {}) const;
-
-  bool is_macro() const {
-    return tag_ == Tag::MACRO;
-  }
-
-  Macro *to_macro(SourceLocation loc = {}) const;
-
-  bool is_proc() const {
-    return tag_ == Tag::PROCEDURE;
-  }
-
-  Procedure *to_proc(SourceLocation loc = {}) const;
-
-  bool is_promise() const {
-    return tag_ == Tag::PROMISE;
-  }
-
-  Promise *to_promise(SourceLocation loc = {}) const;
-
-  bool is_cont() const {
-    return tag_ == Tag::CONTINUATION;
-  }
-
-  Continuation *to_cont(SourceLocation loc = {}) const;
-
-  bool is_port() const {
-    return tag_ == Tag::PORT;
-  }
-
-  Port *to_port(SourceLocation loc = {}) const;
+  PSCM_CELL_TYPE(Keyword, keyword, KEYWORD);
+  PSCM_CELL_TYPE(Pair, pair, PAIR);
+  PSCM_CELL_TYPE(String, str, STRING);
+  PSCM_CELL_TYPE(Symbol, sym, SYMBOL);
+  PSCM_CELL_TYPE(Char, char, CHAR);
+  PSCM_CELL_TYPE(Vec, vec, VECTOR);
+  PSCM_CELL_TYPE(Number, num, NUMBER);
+  PSCM_CELL_TYPE(Macro, macro, MACRO);
+  PSCM_CELL_TYPE(Procedure, proc, PROCEDURE);
+  PSCM_CELL_TYPE(Function, func, FUNCTION);
+  PSCM_CELL_TYPE(Promise, promise, PROMISE);
+  PSCM_CELL_TYPE(Continuation, cont, CONTINUATION);
+  PSCM_CELL_TYPE(Port, port, PORT);
+  PSCM_CELL_TYPE(Module, module, MODULE);
+  PSCM_CELL_TYPE(SmallObject, smob, SMOB);
+  PSCM_CELL_TYPE(HashTable, hash_table, HASH_TABLE);
 
   bool is_self_evaluated() const;
 
   [[nodiscard]] Cell is_eqv(const Cell& rhs) const;
   [[nodiscard]] Cell is_eq(const Cell& rhs) const;
+
+  HashCodeType hash_code() const;
+  static bool is_eq(Cell lhs, Cell rhs);
+  static bool is_eqv(Cell lhs, Cell rhs);
+  static bool is_equal(Cell lhs, Cell rhs);
+
+  UString source_location() const {
+    return loc_.to_string();
+  }
 
 private:
   Cell(Tag tag, void *data)
@@ -264,18 +239,29 @@ private:
   int ref_count_ = 0;
   Tag tag_ = Tag::NONE;
   void *data_ = nullptr;
+  SourceLocation loc_;
   friend class Scheme;
 };
 
+// hack: force load code in AList.cpp
+// do not use the class
+class AList {
+public:
+  AList();
+};
+
 extern Cell nil;
-extern Cell lambda;
 extern Cell quote;
-extern Cell unquote;
-extern Cell quasiquote;
-extern Cell unquote_splicing;
-extern Cell begin;
-extern Cell builtin_for_each;
-extern Cell builtin_map;
-extern Cell builtin_force;
+extern Cell lambda;
 extern Cell apply;
 } // namespace pscm
+
+namespace std {
+template <>
+struct hash<pscm::Cell> {
+  using result_type = std::size_t;
+  using argument_type = pscm::Cell;
+  std::size_t operator()(const pscm::Cell& rhs) const;
+};
+
+} // namespace std

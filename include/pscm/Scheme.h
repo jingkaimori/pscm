@@ -4,39 +4,50 @@
 
 #pragma once
 #include "pscm/Cell.h"
+#include <unordered_map>
 #include <vector>
 
 namespace pscm {
 class SymbolTable;
+class SchemeProxy;
 
 class Scheme {
 public:
   Scheme(bool use_register_machine = false);
   ~Scheme();
-  Cell eval(const char *code);
+  Cell eval(const UString& code);
+  void eval_all(const UString& code, SourceLocation loc = {});
   Cell eval(Cell expr);
-  bool load(const char *filename);
+  bool load(const UString& filename);
+  void add_func(Symbol *sym, Function *func);
+  void repl();
 
 private:
   [[nodiscard]] Cell eval(SymbolTable *env, Cell expr);
+  Cell eval_internal(SymbolTable *env, const UString code);
   [[nodiscard]] Cell eval_args(SymbolTable *env, Cell args, SourceLocation loc = {});
   [[nodiscard]] Cell lookup(SymbolTable *env, Cell expr, SourceLocation loc = {});
   [[nodiscard]] Cell call_proc(SymbolTable *& env, Procedure *proc, Cell args, SourceLocation loc = {});
-  friend Cell scm_define(Scheme& scm, SymbolTable *env, Cell args);
-  friend Cell scm_set(Scheme& scm, SymbolTable *env, Cell args);
-  friend Cell scm_cond(Scheme& scm, SymbolTable *env, Cell args);
-  friend Cell scm_if(Scheme& scm, SymbolTable *env, Cell args);
-  friend Cell scm_and(Scheme& scm, SymbolTable *env, Cell args);
-  friend Cell scm_or(Scheme& scm, SymbolTable *env, Cell args);
-  friend Cell scm_begin(Scheme& scm, SymbolTable *env, Cell args);
-  friend Cell scm_quasiquote(Scheme& scm, SymbolTable *env, Cell args);
-  friend Cell scm_map(Scheme& scm, SymbolTable *env, Cell args);
-  friend Cell scm_for_each(Scheme& scm, SymbolTable *env, Cell args);
-  friend Cell scm_delay(Scheme& scm, SymbolTable *env, Cell args);
-  friend Cell scm_force(Scheme& scm, SymbolTable *env, Cell args);
+  Module *create_module(Cell name);
+
+  Module *current_module() const {
+    return current_module_;
+  };
+
+  void load_module(const UString& filename, Cell module_name);
+  friend Cell debug_set(Scheme& scm, SymbolTable *env, Cell args);
   friend class QuasiQuotationExpander;
+  friend class Macro;
   std::vector<SymbolTable *> envs_;
+  SymbolTable *root_env_;
+  SymbolTable *root_derived_env_;
+  SymbolTable *vau_hack_env_;
+  Module *current_module_;
+  std::vector<Module *> module_list_;
+  std::unordered_map<Cell, Module *> module_map_;
   bool use_register_machine_;
+  bool in_repl_ = false;
+  friend class SchemeProxy;
 };
 
 } // namespace pscm

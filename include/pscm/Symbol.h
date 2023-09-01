@@ -3,36 +3,43 @@
 //
 
 #pragma once
+#include "pscm/Cell.h"
+#include "pscm/misc/ICUCompat.h"
 #include <string>
-#include <string_view>
 
 namespace pscm {
 
 class Symbol {
 public:
-  Symbol(std::string_view sym)
-      : name_(sym.data(), sym.size()) {
+  Symbol(UString name)
+      : name_(std::move(name)) {
   }
 
-  Symbol(std::string_view sym, std::string_view filename, std::size_t row, std::size_t col)
-      : name_(sym.data(), sym.size())
+  Symbol(UString name, const UString & filename, std::size_t row, std::size_t col)
+      : name_(std::move(name))
       , filename_(filename)
       , row_(row)
       , col_(col) {
   }
 
-  std::string_view name() const {
-    return name_;
+  const UString name() const {
+    return get_const_string(name_);
   }
 
-  friend std::ostream& operator<<(std::ostream& out, const Symbol& sym);
   bool operator==(const Symbol& sym) const;
 
+  HashCodeType hash_code() const;
   void print_debug_info();
+  UString to_string() const;
+  static Symbol for_each;
+  static Symbol map;
+  static Symbol load;
+  static Symbol quasiquote;
+  static Symbol unquote_splicing;
 
 private:
-  std::string name_;
-  std::string_view filename_;
+  UString name_;
+  UString filename_;
   std::size_t row_;
   std::size_t col_;
 };

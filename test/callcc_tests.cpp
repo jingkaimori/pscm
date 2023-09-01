@@ -2,13 +2,18 @@
 // Created by PikachuHy on 2023/3/12.
 //
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
-#include <doctest/doctest.h>
+#include "doctest/doctest.h"
+#ifdef PSCM_USE_CXX20_MODULES
+import pscm;
+#else
+#include <pscm/Displayable.h>
 #include <pscm/Number.h>
 #include <pscm/Pair.h>
 #include <pscm/Scheme.h>
 #include <pscm/Symbol.h>
 #include <pscm/scm_utils.h>
 #include <string>
+#endif
 using namespace doctest;
 using namespace pscm;
 using namespace std::string_literals;
@@ -257,7 +262,7 @@ TEST_CASE("testing generator") {
   REQUIRE_MESSAGE(ret.is_none(), ret);
   ret = scm.eval("(generate-one-element-at-a-time '(0 1 2))");
   REQUIRE(ret.is_proc());
-  std::cout << ret << std::endl;
+  std::cout << ret.to_string() << std::endl;
   ret = scm.eval("(define generate-digit (generate-one-element-at-a-time '(0 1 2)))");
   REQUIRE_MESSAGE(ret.is_none(), ret);
   ret = scm.eval("(generate-digit)");

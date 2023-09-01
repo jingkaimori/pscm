@@ -2,7 +2,10 @@
 // Created by PikachuHy on 2023/4/5.
 //
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
-#include <doctest/doctest.h>
+#include "doctest/doctest.h"
+#ifdef PSCM_USE_CXX20_MODULES
+import pscm;
+#else
 #include <pscm/Char.h>
 #include <pscm/Number.h>
 #include <pscm/Pair.h>
@@ -13,6 +16,7 @@
 #include <pscm/scm_utils.h>
 #include <sstream>
 #include <string>
+#endif
 using namespace doctest;
 using namespace pscm;
 using namespace std::string_literals;
@@ -28,32 +32,32 @@ TEST_CASE("testing parse .") {
   CHECK(ret == list(a, b, c, d));
 }
 
-TEST_CASE("testing parse stream") {
-  std::stringstream ss;
-  ss << "(a b . (c d))";
-  Parser parser((std::istream *)&ss);
-  auto ret = parser.parse();
-  auto a = "a"_sym;
-  auto b = "b"_sym;
-  auto c = "c"_sym;
-  auto d = "d"_sym;
-  CHECK(ret == list(a, b, c, d));
-}
+// TEST_CASE("testing parse stream") {
+//   std::stringstream ss;
+//   ss << "(a b . (c d))";
+//   Parser parser((std::istream *)&ss);
+//   auto ret = parser.parse();
+//   auto a = "a"_sym;
+//   auto b = "b"_sym;
+//   auto c = "c"_sym;
+//   auto d = "d"_sym;
+//   CHECK(ret == list(a, b, c, d));
+// }
 
-TEST_CASE("testing parse stream 2") {
-  std::stringstream ss;
-  ss << "a b c d";
-  Parser parser((std::istream *)&ss);
+// TEST_CASE("testing parse stream 2") {
+//   std::stringstream ss;
+//   ss << "a b c d";
+//   Parser parser((std::istream *)&ss);
 
-  auto a = "a"_sym;
-  auto b = "b"_sym;
-  auto c = "c"_sym;
-  auto d = "d"_sym;
-  auto ret = parser.next();
-  CHECK(ret == a);
-  ret = parser.next();
-  CHECK(ret == b);
-}
+//   auto a = "a"_sym;
+//   auto b = "b"_sym;
+//   auto c = "c"_sym;
+//   auto d = "d"_sym;
+//   auto ret = parser.next();
+//   CHECK(ret == a);
+//   ret = parser.next();
+//   CHECK(ret == b);
+// }
 
 TEST_CASE("testing parse #\\ ") {
   auto f = [](Scheme& scm) {
@@ -133,7 +137,8 @@ TEST_CASE("testing ;;") {
     ret = scm.eval(R"(
 (define (float-print-test x)
               ;;   (else (display xx) (newline))
-              )))))
+              '2
+              )
 )");
     CHECK(ret == Cell::none());
   };

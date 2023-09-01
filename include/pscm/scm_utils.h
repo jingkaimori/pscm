@@ -4,56 +4,53 @@
 
 #pragma once
 #include "pscm/Cell.h"
+#include "pscm/Logger.h"
 #include "pscm/Number.h"
 #include "pscm/Pair.h"
 #include "pscm/Symbol.h"
 #include "pscm/common_def.h"
-#include <spdlog/spdlog.h>
-
+#include <concepts>
+#ifdef PSCM_USE_CXX20_MODULES
+#include <fmt/core.h>
+#include <fmt/format.h>
+#else
+#include <spdlog/fmt/fmt.h>
+#endif
 namespace pscm {
-template <typename T>
-Cell list(T t) {
-  if constexpr (std::same_as<T, Cell>) {
-    return cons(t, nil);
-  }
-  else if constexpr (std::same_as<T, int32_t>) {
-    return cons(new Number(t), nil);
-  }
-  else if constexpr (std::same_as<T, Symbol>) {
-    return cons(new Symbol(t), nil);
-  }
-  else if constexpr (std::is_pointer_v<T>) {
-    using U = std::remove_pointer_t<T>;
-    return cons(t, nil);
-  }
-  else {
-    static_assert(!sizeof(T), "not supported now");
-  }
+inline Cell list(Cell t) {
+  return cons(t, nil);
 }
 
-template <typename T, typename... Args>
-Cell list(T t, Args... args) {
-  if constexpr (std::same_as<T, Cell>) {
-    return cons(t, list(args...));
-  }
-  else if constexpr (std::same_as<T, int32_t>) {
-    return cons(new Number(t), list(args...));
-  }
-  else if constexpr (std::same_as<T, Symbol>) {
-    return cons(new Symbol(t), list(args...));
-  }
-  else if constexpr (std::is_pointer_v<T>) {
-    using U = std::remove_pointer_t<T>;
-    return cons(t, list(args...));
-  }
-  else {
-    static_assert(!sizeof(T), "not supported now");
-  }
+inline Cell list(int32_t t) {
+  return cons(new Number(t), nil);
+}
+
+inline Cell list(Symbol t) {
+  return cons(new Symbol(t), nil);
+}
+
+template <typename... Args>
+Cell list(int32_t t, Args... args);
+
+template <typename... Args>
+inline Cell list(Cell t, Args... args) {
+  return cons(t, list(args...));
+}
+
+template <typename... Args>
+inline Cell list(int32_t t, Args... args) {
+  return cons(new Number(t), list(args...));
+}
+
+template <typename... Args>
+inline Cell list(Symbol t, Args... args) {
+  return cons(new Symbol(t), list(args...));
 }
 
 Cell reverse_argl(Cell argl);
 
-Cell for_each(auto f, Cell list, SourceLocation loc = {}) {
+template <typename Func>
+Cell for_each(Func f, Cell list, SourceLocation loc = {}) {
   while (!list.is_nil()) {
     auto item = car(list);
     f(item, loc);
@@ -63,7 +60,8 @@ Cell for_each(auto f, Cell list, SourceLocation loc = {}) {
   return Cell::none();
 }
 
-Cell for_each(auto f, Cell list1, Cell list2, SourceLocation loc = {}) {
+template <typename Func>
+Cell for_each(Func f, Cell list1, Cell list2, SourceLocation loc = {}) {
   while (!list1.is_nil() && !list2.is_nil()) {
     auto item1 = car(list1);
     auto item2 = car(list2);
@@ -71,11 +69,13 @@ Cell for_each(auto f, Cell list1, Cell list2, SourceLocation loc = {}) {
     list1 = cdr(list1);
     list2 = cdr(list2);
   }
+  PSCM_INLINE_LOG_DECLARE("pscm.core.for_each");
   PSCM_ASSERT(list1.is_nil() && list2.is_nil());
   return Cell::none();
 }
 
-Cell map(auto f, Cell list, SourceLocation loc = {}) {
+template <typename Func>
+Cell map(Func f, Cell list, SourceLocation loc = {}) {
   auto ret = cons(nil, nil);
   auto p = ret;
   while (!list.is_nil()) {
@@ -90,7 +90,8 @@ Cell map(auto f, Cell list, SourceLocation loc = {}) {
   return ret->second;
 }
 
-Cell map(auto f, Cell list1, Cell list2, SourceLocation loc = {}) {
+template <typename Func>
+Cell map(Func f, Cell list1, Cell list2, SourceLocation loc = {}) {
   auto ret = cons(nil, nil);
   auto p = ret;
   while ((!list1.is_nil() && !list2.is_nil())) {
@@ -103,6 +104,7 @@ Cell map(auto f, Cell list1, Cell list2, SourceLocation loc = {}) {
     list1 = cdr(list1);
     list2 = cdr(list2);
   }
+  PSCM_INLINE_LOG_DECLARE("pscm.core.map");
   PSCM_ASSERT(list1.is_nil() && list2.is_nil());
   return ret->second;
 }
@@ -112,13 +114,15 @@ Cell map(auto f, Cell list1, Cell list2, SourceLocation loc = {}) {
 template <>
 class fmt::formatter<pscm::Cell> {
 public:
-  auto parse(format_parse_context& ctx) {
+  constexpr auto parse(format_parse_context& ctx) {
     // PSCM_THROW_EXCEPTION("not supported now");
     auto i = ctx.begin();
     return i;
   }
 
-  auto format(const pscm::Cell& cell, auto& ctx) const {
-    return format_to(ctx.out(), "{}", cell.to_string());
+  auto format(const pscm::Cell& cell, format_context& ctx) const {
+    std::string str;
+    cell.to_string().toUTF8String(str);
+    return format_to(ctx.out(), "{}", str);
   }
 };

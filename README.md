@@ -33,6 +33,20 @@ see [Build pscm](https://pscm.dev/cn/how_to_build_pscm)
 
 see [Development Plan](https://github.com/PikachuHy/pscm/issues/13)
 
+## Screenshot
+
+- vau
+
+![vau pdf preview](http://cdn.pikachu.net.cn/pscm/vau/vau-test_pdf.png)
+
+- pscm android app
+
+![pscm android app](http://cdn.pikachu.net.cn/pscm/android.jpg)
+
+- pscm ios app
+
+![pscm ios app](http://cdn.pikachu.net.cn/pscm/ios.png)
+
 ## License
 
 The project is available under the [MIT](https://opensource.org/licenses/MIT) license.

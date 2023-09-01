@@ -4,6 +4,7 @@
 
 #pragma once
 #include "pscm/Cell.h"
+#include "pscm/misc/ICUCompat.h"
 #include <unordered_map>
 
 namespace pscm {
@@ -11,8 +12,13 @@ class Symbol;
 
 class SymbolTable {
 public:
-  SymbolTable(SymbolTable *parent = nullptr)
-      : parent_(parent) {
+  SymbolTable(UString name = {}, SymbolTable *parent = nullptr)
+      : name_(name)
+      , parent_(parent) {
+  }
+
+  const UString& name() const {
+    return name_;
   }
 
   bool contains(Symbol *sym) const;
@@ -26,8 +32,18 @@ public:
     return parent_;
   }
 
+  void use(SymbolTable *env, Symbol *sym);
+  void use(const SymbolTable& env);
+
+  void dump(SourceLocation loc = {}) const;
+
 private:
-  std::unordered_map<std::string_view, Cell> map_;
+  struct Entry {
+    Cell data;
+  };
+
+  std::unordered_map<UString, Entry *> map_;
+  UString name_;
   SymbolTable *parent_;
 };
 

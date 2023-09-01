@@ -1,15 +1,25 @@
 //
 // Created by PikachuHy on 2023/3/19.
 //
-
+#ifdef PSCM_USE_CXX20_MODULES
+#include "pscm/Logger.h"
+#include "pscm/common_def.h"
+import pscm;
+import std;
+import fmt;
+#else
 #include "pscm/Char.h"
 #include "pscm/Port.h"
 #include "pscm/common_def.h"
 #include "pscm/scm_utils.h"
+#include <spdlog/fmt/fmt.h>
 #include <string>
+#include <unicode/uchar.h>
+#endif
 using namespace std::string_literals;
 
 namespace pscm {
+PSCM_INLINE_LOG_DECLARE("pscm.core.Char");
 static Char ch_at("@");
 static Char ch_star("*");
 static Char ch_space(" ");
@@ -19,7 +29,7 @@ static Char ch_minus("-");
 static Char ch_semicolon(";");
 static Char ch_point(".");
 
-Cell Char::from(char ch) {
+Cell Char::from(UChar32 ch) {
   if (ch == '@') {
     return &ch_at;
   }
@@ -56,38 +66,66 @@ Cell Char::from(char ch) {
     static Char tmp("#");
     return &tmp;
   }
-  else if (ch == EOF) {
-    std::string s;
-    s.resize(1);
-    s[0] = ch;
-    return new Char(std::move(s));
+  else if (ch == '~') {
+    static Char tmp("~");
+    return &tmp;
   }
-  else if (std::isalnum(ch)) {
-    std::string s;
-    s.resize(1);
-    s[0] = ch;
-    return new Char(std::move(s));
+  else if (ch == '%') {
+    static Char tmp("%");
+    return &tmp;
+  }
+  else if (ch == '=') {
+    static Char tmp("=");
+    return &tmp;
+  }
+  else if (ch == '/') {
+    static Char tmp("/");
+    return &tmp;
+  }
+  else if (ch == ':') {
+    static Char tmp(":");
+    return &tmp;
+  }
+  else if (ch == '&') {
+    static Char tmp("&");
+    return &tmp;
+  }
+  else if (ch == '<') {
+    static Char tmp("<");
+    return &tmp;
+  }
+  else if (ch == '>') {
+    static Char tmp(">");
+    return &tmp;
+  }
+  else if (ch == EOF) {
+    return new Char(EOF);
+  }
+  else if (u_isalnum(ch)) {
+    return new Char(ch);
+  }
+  else if (int(ch) <= 32) {
+    return new Char(ch);
   }
   else {
-    PSCM_THROW_EXCEPTION("unsupported char: "s + ch);
+    PSCM_THROW_EXCEPTION("unsupported char: " + ch);
   }
 }
 
-std::ostream& operator<<(std::ostream& out, const Char& ch) {
-  PSCM_ASSERT(!ch.ch_.empty());
-  if (ch.ch_.size() == 1) {
-    switch (ch.ch_.at(0)) {
+UString Char::to_string() const{
+  switch (ch_) {
     case '\n': {
-      out << "#\\newline";
-      return out;
+      return "#\\newline";
     }
     case ' ': {
-      out << "#\\space";
+      return "#\\space";
+    }
+    default:{
+      UString out("#\\");
+      out += ch_;
       return out;
     }
-    }
   }
-  return out << "#\\" << ch.ch_;
 }
 
 bool Char::operator==(const Char& rhs) const {
@@ -111,44 +149,34 @@ bool Char::operator>=(const Char& rhs) const {
 }
 
 void Char::display(Port& port) const {
-  PSCM_ASSERT(!ch_.empty());
-  for (auto ch : ch_) {
-    port.write_char(ch);
-  }
+  port.write_char(ch_);
 }
 
 bool Char::is_alphabetic() const {
-  return ch_.size() == 1 && std::isalpha(ch_[0]);
+  return u_isalpha(ch_);
 }
 
 bool Char::is_numeric() const {
-  return ch_.size() == 1 && std::isalnum(ch_[0]) && !std::isalpha(ch_[0]);
+  return u_isdigit(ch_);
 }
 
 bool Char::is_whitespace() const {
-  return ch_.size() == 1 && std::isspace(ch_[0]);
+  return u_isWhitespace(ch_);
+}
+
+bool Char::is_eof() const {
+  return ch_ == EOF;
 }
 
 Char Char::to_downcase() const {
-  std::string str;
-  str.resize(ch_.size());
-  for (size_t i = 0; i < ch_.size(); i++) {
-    str[i] = std::tolower(ch_[i]);
-  }
-  return Char(std::move(str));
+  return Char(u_tolower(ch_));
 }
 
 Char Char::to_upcase() const {
-  std::string str;
-  str.resize(ch_.size());
-  for (size_t i = 0; i < ch_.size(); i++) {
-    str[i] = std::toupper(ch_[i]);
-  }
-  return Char(std::move(str));
+  return Char(u_toupper(ch_));
 }
-
-std::int64_t Char::to_int() const {
-  PSCM_ASSERT(ch_.size() == 1);
-  return int(ch_[0]);
+ 
+UChar32 Char::to_int() const {
+  return int(ch_);
 }
 } // namespace pscm

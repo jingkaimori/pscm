@@ -3,6 +3,9 @@
 //
 
 #pragma once
+#include "compat.h"
+#include "pscm/misc/ICUCompat.h"
+#include <cstdint>
 #include <cstdlib>
 #include <iostream>
 #include <variant>
@@ -28,12 +31,13 @@ public:
     return imag_part_;
   }
 
-  friend std::ostream& operator<<(std::ostream& out, const Complex& num);
+  UString to_string() const;
 
 private:
   double real_part_;
   double imag_part_;
 };
+class Number;
 
 class Rational {
 public:
@@ -59,16 +63,21 @@ public:
     return 1.0 * numerator_ / denominator_;
   }
 
-  friend std::ostream& operator<<(std::ostream& out, const Rational& num);
+  UString to_string() const;
 
 private:
   int64_t numerator_;
   int64_t denominator_;
+  friend class Number;
 };
 
 class Number {
 public:
   Number() {
+  }
+
+  Number(std::uint32_t val) {
+    data_ = val;
   }
 
   Number(int32_t val) {
@@ -125,7 +134,7 @@ public:
   }
 
   void display() const;
-  [[nodiscard]] std::string to_string() const;
+  [[nodiscard]] UString to_string() const;
   friend std::ostream& operator<<(std::ostream& out, const Number& num);
   Number operator-(const Number& num);
   Number operator/(const Number& num);
